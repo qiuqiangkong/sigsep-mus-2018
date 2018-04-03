@@ -6,7 +6,7 @@ CVSSP, University of Surrey, Guildford, UK
 
 dominic.ward@surrey.ac.uk
 
-q.kong[at]surrey.ac.uk
+q.kong@surrey.ac.uk
 
 ## Additional Info
 
