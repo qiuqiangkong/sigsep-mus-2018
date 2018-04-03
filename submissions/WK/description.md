@@ -4,8 +4,9 @@ Dominic Ward, Qiuqiang Kong
 
 CVSSP, University of Surrey, Guildford, UK
 
-dominic[dot]ward[at]surrey[dot]ac[dot]uk
-q[dot]kong[at]surrey[dot]ac[dot]uk
+dominic.ward@surrey.ac.uk
+
+q.kong[at]surrey.ac.uk
 
 ## Additional Info
 
@@ -23,19 +24,18 @@ be incorporated for others to use in a more flexible manner.
 ## Method
 
 This method is based on techniques given in the references, with some
-experimentation.
+experimentation. We used a bidirectional gated recurrent unit (BGRU) neural
+network (one model per source) to estimate a time-frequency mask for each
+source.
 
-This submission uses a bidirectional gated recurrent unit (BGRU) neural network
-(one model per source) to estimate a time-frequency mask for each source.
+To obtain the accompaniment, the estimated bass, drums and other sources were
+summed.
 
-To obtain the accompaniment, we summed the estimated bass, drums and other
-sources.
-
-Specific stems are summarised below.
+Specific steps are summarised below.
 
 ### Pre-Processing / Feature Derivation
 
-1. Resample input from 44.1 kHz to 32 kHz
+1. Resample audio from 44.1 kHz to 32 kHz
 2. Compute stereo STFT:
 
     - Window: Hamming
@@ -43,52 +43,53 @@ Specific stems are summarised below.
     - Hop size: 512
 
 3. Convert stereo STFT to mono magnitude spectrogram
-4. Apply a mel-frequency filter bank (128 bands) to the spectrogram
-5. Take the log of the mel magnitude spectrogram
+4. Apply a mel-frequency filter bank (128 bands)
+5. Take the log of the mel-magnitude spectrogram
 6. Standardise each mel band using the means and standard deviations computed
-   from the training data.
+   from the training data
 
 ### Model and Training
 
 The model is a BGRU with 3 layers and 512 units per layer. The input to the
-model is a standardised log mel magnitude spectrogram whose number of time
+model is a standardised log mel-magnitude spectrogram whose number of time
 frames are determined by a context window. Each context window consists of
-several stacked frames, chosen to be 11 for drums and 101 for bass, other and
-vocals. Given these stacked frames, the model predicts a single mel-frequency
-mask of length 128, corresponding to the centre frame. That is, the output of
-the model is a mel mask. 
+several stacked frames, which was chosen to be 11 for drums and 101 for bass,
+other and vocals. Given these stacked frames, the model predicts a single
+mel-frequency mask of length 128, corresponding to the centre frame of the
+context window. That is, the output of the model is a mel mask. 
 
 The loss function is defined as the absolute difference (L1-norm loss) between
-the target mel magnitude spectrum (not log) and the element-wise multiplication
-of the predicted mel mask and the mel magnitude spectrum of the mixture. Or
-because that's a mouth full:
+the mel-magnitude spectrum (not log) of the target, and the element-wise
+multiplication of the predicted mel mask and the mel-magnitude spectrum of the
+mixture. Or, because that's a mouth full:
 
 `loss = sum(| target_mel - predited_mel_mask * mixture_mel |)`
 
-We used the Adam optimisation algorithm with a learning rate of 0.001 to
+We used the Adam optimisation algorithm with a learning rate of 0.0001 to
 minimise the loss function. 
 
-Four models were trained (one per source), using batches of 100 observations (of
-stacked frames) which were drawn from the shuffled dataset (shuffling every
-epoch). We used a hop size of 1 frame when drawing observations from the
-training spectrograms. There were roughly 12500 iterations of these batches per
-epoch.
+Four models were trained (one per source), using batches of 100
+mini-spectrograms (determined by context window) which were drawn from the
+shuffled dataset (shuffling every epoch). We used a hop size of 1 frame when
+drawing mini-spectrograms from the training data. There were roughly 12500
+iterations of these batches per epoch.
 
 We used the last 10 songs from the training set (100 songs) as our validation
 set.
 
-To apply the model after training, we interpolate the mel-mask to a
+To apply the model after training, the mel-mask is interpolated to a
 linear-frequency mask (see intro of [2]), which can then be multiplied with the
 complex spectrum of the mixture to obtain the complex spectrum of a given
 source.
 
 ### Post-processing
 
-- For each source, we averaged the output of 5 models from the latter half of
-    the training session. Specifically, we averaged models saved at iterations 15, 20, 25 and
-    30 thousand. This was done to reduce variance in the estimated mask.
+- For each source, we averaged the output of four models from the latter half of
+    the training session. Specifically, we averaged models saved at iterations
+    15, 20, 25 and 30 thousand. This was done to reduce variance in the
+    estimated mask.
 
-- Single-channel Wiener filter
+- Single-channel Wiener filter (see [1])
 
 ### Inverse STFT
 
@@ -102,22 +103,23 @@ After training the models, we computed BSS Eval measures on the validation test
 to estimate performance and compare models. Although not scientifically
 rigorous, we made some observations based on our validation set:
 
-- Stacking more frames (longer context window) had a negative effect on
+- Stacking more frames (longer context window) had a negative effect on the
     performance for drums.
 
-- Stacking more frames had a positive effect on the remaining sources in therms
-    of SDR, most notably the vocals.
+- Stacking more frames had a positive effect on the remaining sources in terms
+    of SDR, most notably for the vocals.
 
 - For a low number of stacked frames, e.g. up to 11, it was hard to make a case
     for a 3-layer network given the variance in the BSS Eval measures.
 
 - Surprisingly, Mel or ERB-inspired compressed spectra performed on par with raw
     linear magnitude spectrum. This means that the complexity of the model can
-    be significantly reduced (as discussed in [2]).
+    be significantly reduced by simplifying the input representation (as
+    discussed in [2]).
 
-- Minimising in linear magnitude domain (after interpolating the mel-mask)
-    didn't seem to make much difference, but we didn't test extensively (see Eq.
-    6 of [2]).
+- Minimising the loss in linear magnitude domain (after interpolating the
+    mel-mask) didn't seem to make much difference, but we didn't test
+    extensively (see Eq.  6 of [2]).
     
 - From listening, Wiener filtering improves general suppression of unwanted
     sources, but distorts the bass. We did experiment with multi-channel
